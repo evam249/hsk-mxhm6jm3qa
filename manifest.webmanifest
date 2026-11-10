@@ -1,0 +1,14 @@
+{
+  "name": "HSK Trainer — Vocabulario chino",
+  "short_name": "HSK Trainer",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F8F4ED",
+  "theme_color": "#F8F4ED",
+  "icons": [
+    { "src": "img/icono-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "img/icono-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
