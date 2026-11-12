@@ -213,6 +213,15 @@ body.en-sesion #filterrow,body.en-pausa #filterrow{display:none}
 .pres-aviso{margin:0 16px 10px;padding:10px 14px;border-radius:12px;background:var(--green-softer);color:var(--green-dark);font-size:15px;line-height:1.45}
 .pres-btns{display:flex;flex-direction:column;gap:10px;padding:0 16px calc(16px + env(safe-area-inset-bottom));position:sticky;bottom:0;background:var(--bg);padding-top:8px;z-index:5}
 .btn-audio.sm{width:44px;height:44px;margin-top:8px}.btn-audio.sm svg{width:22px;height:22px}
+.audio-par{display:inline-flex;flex-direction:column;align-items:center;gap:6px;flex-shrink:0}
+.audio-par.sm{flex-direction:row;gap:8px;margin-top:8px}.audio-par.sm .btn-audio.sm{margin-top:0}
+.btn-lento{min-height:44px;padding:0 12px;border-radius:var(--pill);border:1px solid var(--green-soft);background:var(--surface);color:var(--green-dark);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.btn-lento:hover{background:var(--green-softer)}
+.btn-star{position:absolute;top:8px;right:8px;z-index:2;width:44px;height:44px;border-radius:50%;border:none;background:transparent;color:var(--ink-2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.btn-star svg{width:24px;height:24px}.btn-star.on{color:var(--ochre)}.btn-star.on svg{fill:currentColor}
+.btn-star.sm{position:static;margin-left:auto;width:44px;height:44px;margin-top:-10px;margin-bottom:-10px}
+.ficha-badges{display:flex;gap:6px;margin-bottom:10px;align-items:center}
+.voc-star{display:inline-flex;vertical-align:middle;color:var(--ochre);margin-right:4px}.voc-star svg{width:16px;height:16px;fill:currentColor}
 .prevision{font-size:14px;color:var(--ink-2);line-height:1.5;margin-top:10px;position:relative}
 button.voc-item{width:100%;font:inherit;text-align:left;cursor:pointer;color:inherit}
 button.voc-item:hover{border-color:#D6CDBF}
@@ -371,7 +380,7 @@ var TEMAS = [
   {id:'animales',nombre:'Animales',activo:false,parejas:[]} // más adelante: tipo:'img' con foto (plan aparte)
 ];
 (function(){'use strict';
-var KP='hsk-prog-v2',KS='hsk-ses-v2',KCF='hsk-cfg-v1',KH='hsk-hist-v1',KJ='hsk-juegos-v1';
+var KP='hsk-prog-v2',KS='hsk-ses-v2',KCF='hsk-cfg-v1',KH='hsk-hist-v1',KJ='hsk-juegos-v1',KG='hsk-guardadas-v1';
 var INTS={again:10,hard:1440,good:4320,easy:10080};
 var pausada=false; // sesión en pausa (12-nov-2026): se guarda y deja usar las pestañas; solo en memoria
 var prog={},cfg={},session=null,recent=[],curTab='study',flipped=false,hist=[],resumen=null,pinEscrito='';
@@ -390,7 +399,7 @@ function loadCfg(){try{var d=localStorage.getItem(KCF);cfg=d?JSON.parse(d):{}}ca
   if(['HSK1','HSK2','HSK3','Extra','all'].indexOf(cfg.level)>=0)filter.level=cfg.level;
   // Dirección y modo elegidos (campos dir y smode, añadidos el 9-nov-2026)
   if(['esp2chi','chi2esp','pinyin'].indexOf(cfg.dir)>=0)filter.mode=cfg.dir;
-  if(['today','new','hard','all','quick10','quick20','quick30'].indexOf(cfg.smode)>=0)filter.sessionMode=cfg.smode;}
+  if(['today','new','hard','all','quick10','quick20','quick30','saved'].indexOf(cfg.smode)>=0)filter.sessionMode=cfg.smode;}
 function saveCfg(){try{localStorage.setItem(KCF,JSON.stringify(cfg));return true;}catch(e){avisoGuardado();return false;}}
 function loadProg(){try{var d=localStorage.getItem(KP);prog=d?JSON.parse(d):{}}catch(e){prog={};}if(!isObj(prog))prog={};
   Object.keys(prog).forEach(function(k){if(!isObj(prog[k]))delete prog[k];else sanear(prog[k]);});}
@@ -422,6 +431,20 @@ function logResp(k,r,ts){
   var lim=ts-60*864e5;while(hist.length&&(hist.length>3000||hist[0].ts<lim))hist.shift();
   try{localStorage.setItem(KH,JSON.stringify(hist));}catch(e){avisoGuardado();}
 }
+// Palabras guardadas con la estrella (clave hsk-guardadas-v1, 12-nov-2026; ESTUDIO_MEJORAS_APPS.md, idea 16 y D11).
+// {clave: fecha}. Al cargar se descartan las claves que no existen en V (también las de una copia importada).
+var guard={};
+function loadGuard(){
+  var d=null;try{d=JSON.parse(localStorage.getItem(KG)||'null');}catch(e){d=null;}
+  guard={};if(!isObj(d))return;
+  var hay={};V.forEach(function(w){hay[wk(w)]=1;});
+  var quitadas=0;Object.keys(d).forEach(function(k){var m=mk(k);if(hay[m])guard[m]=typeof d[k]==='number'&&d[k]>0?d[k]:Date.now();else quitadas++;});
+  if(quitadas)saveGuard();
+}
+function saveGuard(){try{localStorage.setItem(KG,JSON.stringify(guard));return true;}catch(e){avisoGuardado();return false;}}
+function guardada(k){return guard.hasOwnProperty(k);}
+function cambiarGuardada(k){if(guardada(k))delete guard[k];else guard[k]=Date.now();saveGuard();return guardada(k);}
+function estrellaHTML(k,sm){var on=guardada(k);return"<button type='button' class='btn-star"+(sm?' sm':'')+(on?' on':'')+"' data-guardar='"+esc(k)+"' aria-pressed='"+on+"' aria-label='Guardar palabra'>"+ico('star')+"</button>";}
 function saveProg(){try{localStorage.setItem(KP,JSON.stringify(prog));return true;}catch(e){avisoGuardado();return false;}}
 // A4: antes los errores al guardar se perdían en silencio. Aviso fijo arriba, hasta que se cierre.
 var guardadoOk=true;
@@ -533,6 +556,8 @@ function getQueue(mode){
   if(mode==='quick10')return shuffle(vistas()).slice(0,10);
   if(mode==='quick20')return shuffle(vistas()).slice(0,20);
   if(mode==='quick30')return shuffle(vistas()).slice(0,30);
+  // Guardadas: las de la estrella de todos los niveles (se guardan de cualquiera); las menos sabidas primero
+  if(mode==='saved')return dedup(V.filter(function(w){return guardada(wk(w));})).sort(function(a,b){return gp(a).pct-gp(b).pct;});
   return[];
 }
 
@@ -677,6 +702,7 @@ var ICO={
   zap:'<path d="M13 3 4 14h7l-1 7 9-11h-7l1-7z"/>',
   speaker:'<path d="M11 5 6.5 9H3v6h3.5L11 19V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9.5 9.5 0 0 1 0 13"/>',
   x:'<path d="M17 7 7 17M7 7l10 10"/>',
+  star:'<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5z"/>',
   ok:'<path d="M20 6.5 9.5 17 4 11.5"/>',
   mountain:'<path d="M2.5 19.5 9 8.5l4 6.5 2.5-3.5 6 8H2.5z"/><circle cx="17" cy="6" r="2"/>',
   book:'<path d="M12 6.5C10.5 5.2 8.4 4.5 6 4.5c-1.1 0-2.1.1-3 .4v14c.9-.3 1.9-.4 3-.4 2.4 0 4.5.7 6 2 1.5-1.3 3.6-2 6-2 1.1 0 2.1.1 3 .4v-14c-.9-.3-1.9-.4-3-.4-2.4 0-4.5.7-6 2zM12 6.5v14"/>',
@@ -700,14 +726,19 @@ function racha(){
 
 // Audio con la voz del navegador (solo si hay síntesis de voz)
 function hayVoz(){return typeof window.speechSynthesis!=='undefined'&&typeof window.SpeechSynthesisUtterance!=='undefined';}
-function decir(txt){
+// lento: «Más despacio» (0,6 frente a 0,85; D2, 12-nov-2026)
+function decir(txt,lento){
   if(!hayVoz())return;
-  try{speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(txt);u.lang='zh-CN';u.rate=.85;
+  try{speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(txt);u.lang='zh-CN';u.rate=lento?.6:.85;
     // Mandarín: zh-CN primero; si no, zh-TW. Nunca zh-HK (cantonés).
     var vs=speechSynthesis.getVoices(),v=vs.filter(function(x){return/^zh[-_](CN|Hans)/i.test(x.lang);})[0]||vs.filter(function(x){return/^zh[-_]TW/i.test(x.lang);})[0];if(v)u.voice=v;
     speechSynthesis.speak(u);}catch(e){}
 }
 
+// Altavoz y «Despacio» juntos
+function audioPar(txt,etq,sm){
+  return"<span class='audio-par"+(sm?' sm':'')+"'><button type='button' class='btn-audio"+(sm?' sm':'')+"' data-say='"+esc(txt)+"' aria-label='"+esc(etq)+"'>"+ico('speaker')+"</button><button type='button' class='btn-lento' data-say='"+esc(txt)+"' data-lento='1' aria-label='"+esc(etq)+" más despacio'>Despacio</button></span>";
+}
 function dedup(a){var s={},r=[];a.forEach(function(w){var k=wk(w);if(!s[k]){s[k]=1;r.push(w);}});return r;}
 function shuffle(a){var b=a.slice();for(var i=b.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=b[i];b[i]=b[j];b[j]=t;}return b;}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -721,7 +752,7 @@ function pcol(p){return p>=80?'#4A6B43':p>=50?'#9A6A12':'#B94D2B';}
 
 // ── UI BUILD ──
 function init(){
-  loadCfg();loadProg();loadHist();loadJuegos();migrateKeys();migrateLegacy();loadSes();sembrarHist();buildUI();render();bienvenida();atajos();window.addEventListener('popstate',onPop);vigilarVoces();
+  loadCfg();loadProg();loadHist();loadJuegos();migrateKeys();migrateLegacy();loadGuard();loadSes();sembrarHist();buildUI();render();bienvenida();atajos();window.addEventListener('popstate',onPop);vigilarVoces();
 }
 
 function buildUI(){
@@ -734,7 +765,7 @@ function buildUI(){
 
 function buildFilters(){
   var lv=[['HSK1','HSK 1'],['HSK2','HSK 2'],['HSK3','HSK 3'],['Extra','Extra'],['all','Todos']];
-  var sm=[['today','Para hoy','cap'],['new','Nuevas','layers'],['hard','Difíciles','bars'],['all','Todo','grid'],['quick10','Rápida 10','zap'],['quick20','Rápida 20','zap']];
+  var sm=[['today','Para hoy','cap'],['new','Nuevas','layers'],['hard','Difíciles','bars'],['all','Todo','grid'],['quick10','Rápida 10','zap'],['quick20','Rápida 20','zap'],['saved','Guardadas','star']];
   var mo=[['esp2chi','Español → chino'],['chi2esp','Chino → español'],['pinyin','Chino → pinyin']];
   var chip=function(f,x,on,cls,icon){return"<button type='button' class='chip"+(on?" "+cls:"")+"' data-f='"+f+"' data-v='"+x[0]+"' aria-pressed='"+(on?'true':'false')+"'>"+(icon?ico(icon):"")+x[1]+"</button>";};
   var h="<div class='filter-group'><span class='filter-label' id='fl-nivel'>Nivel</span><div class='chips chips-nivel' role='group' aria-labelledby='fl-nivel'>";
@@ -889,7 +920,7 @@ function sessionHdr(){
 
 function cardHTML(w){
   var p=gp(w);
-  var h="<div class='card-wrap'><article class='card'><img class='card-paisaje' src='img/tarjeta-paisaje.svg' alt='' aria-hidden='true'><div class='card-badge'>"+lbadge(w.N)+sbadge(p.state)+"</div>";
+  var h="<div class='card-wrap'><article class='card'><img class='card-paisaje' src='img/tarjeta-paisaje.svg' alt='' aria-hidden='true'><div class='card-badge'>"+lbadge(w.N)+sbadge(p.state)+"</div>"+estrellaHTML(wk(w));
   if(!flipped){
     h+="<div class='card-hint'>";
     if(filter.mode==='esp2chi')h+='Recuerda el carácter y pronunciación';
@@ -902,11 +933,11 @@ function cardHTML(w){
     if(p.seen>0)h+="<div class='card-prog'><div class='card-prog-row'><span>"+pl(p.seen,'repaso','repasos')+"</span><span style='color:"+pcol(p.pct)+";font-weight:700'>"+p.pct+"%</span></div><div class='mini-bar'><div class='mini-fill' style='width:"+p.pct+"%;background:"+pcol(p.pct)+"'></div></div></div>";
     h+="<button type='button' class='btn-reveal' id='btn-reveal'>Ver respuesta</button>";
   } else {
-    h+="<div class='card-main'><div class='card-char"+(w.C.length>2?" sm":"")+"' lang='zh-CN'>"+esc(w.C)+"</div>"+(hayVoz()?"<button type='button' class='btn-audio' data-say='"+esc(w.C)+"' aria-label='Escuchar "+esc(w.C)+"'>"+ico('speaker')+"</button>":"")+"</div>";
+    h+="<div class='card-main'><div class='card-char"+(w.C.length>2?" sm":"")+"' lang='zh-CN'>"+esc(w.C)+"</div>"+(hayVoz()?audioPar(w.C,'Escuchar '+w.C):"")+"</div>";
     h+="<div class='card-pin' lang='zh-Latn-pinyin'>"+esc(w.P)+"</div><div class='card-esp-small'>"+esc(w.E)+"</div>";
     if(pinEscrito){var cp=compararPinyin(pinEscrito,w.P);
       h+="<div class='pin-res pin-"+cp+"' role='status'>"+(cp==='ok'?'Correcto: ':cp==='tonos'?'Letras bien, revisa los tonos: ':'No coincide: ')+"escribiste «"+esc(pinEscrito)+"»</div>";}
-    if(w.S)h+="<div class='card-sentence'><div class='card-sentence-in'><div class='card-sentence-zh' lang='zh-CN'>"+esc(w.S)+"</div>"+(w.SY?"<div class='card-sentence-py' lang='zh-Latn-pinyin'>"+esc(w.SY)+"</div>":"")+"<div class='card-sentence-es'>"+esc(w.SP)+"</div>"+(hayVoz()?"<button type='button' class='btn-audio sm' data-say='"+esc(w.S)+"' aria-label='Escuchar la frase'>"+ico('speaker')+"</button>":"")+"</div></div>";
+    if(w.S)h+="<div class='card-sentence'><div class='card-sentence-in'><div class='card-sentence-zh' lang='zh-CN'>"+esc(w.S)+"</div>"+(w.SY?"<div class='card-sentence-py' lang='zh-Latn-pinyin'>"+esc(w.SY)+"</div>":"")+"<div class='card-sentence-es'>"+esc(w.SP)+"</div>"+(hayVoz()?audioPar(w.S,'Escuchar la frase',1):"")+"</div></div>";
   }
   h+="</article></div>";return h;
 }
@@ -937,6 +968,7 @@ function sessionDone(s){
     var msg=/^quick/.test(s.mode)?'Las tandas rápidas usan palabras que ya has visto, y en este nivel aún no hay ninguna.':
       s.mode==='new'?(newLeft()===0?lim:'Ya has empezado todas las palabras de este nivel.'):
       s.mode==='today'?(newLeft()===0?lim:'No tienes repasos pendientes ni palabras nuevas en este nivel.'):
+      s.mode==='saved'?'No tienes palabras guardadas. Guárdalas con la estrella de la tarjeta o de su ficha en Vocabulario.':
       'No hay palabras para esta sesión.';
     if(prox)msg=prox+' '+msg;
     return"<div class='empty-state'><div class='empty-icon'>"+ico('mountain')+"</div><h2 class='empty-title' tabindex='-1'>Nada que repasar aquí</h2><div class='empty-sub'>"+msg+"</div><div class='empty-actions'><button class='btn-secondary' id='btn-go-home'>Volver al inicio</button></div></div>";
@@ -961,7 +993,7 @@ function renderVocab(){
   var h="<div class='panel'><input class='voc-search' id='voc-q' type='search' placeholder='Buscar en español, 汉字 o pinyin' aria-label='Buscar palabras' autocomplete='off' value='"+esc(vf.q)+"'><div class='voc-filters' role='group' aria-label='Nivel'>";
   [['all','Todo'],['HSK1','HSK 1'],['HSK2','HSK 2'],['HSK3','HSK 3'],['Extra','Extra']].forEach(function(x){h+="<button type='button' class='voc-chip"+(vf.level===x[0]?' active':"")+"' aria-pressed='"+(vf.level===x[0])+"' data-vf='level' data-vv='"+x[0]+"'>"+x[1]+"</button>";});
   h+="</div><div class='voc-filters' role='group' aria-label='Estado'>";
-  [['all','Todos'],['new','Nuevas'],['learning','Aprendiendo'],['review','Repaso'],['hard','Difíciles'],['done','Dominadas']].forEach(function(x){h+="<button type='button' class='voc-chip"+(vf.state===x[0]?' active':"")+"' aria-pressed='"+(vf.state===x[0])+"' data-vf='state' data-vv='"+x[0]+"'>"+x[1]+"</button>";});
+  [['all','Todos'],['new','Nuevas'],['learning','Aprendiendo'],['review','Repaso'],['hard','Difíciles'],['done','Dominadas'],['saved','Guardadas']].forEach(function(x){h+="<button type='button' class='voc-chip"+(vf.state===x[0]?' active':"")+"' aria-pressed='"+(vf.state===x[0])+"' data-vf='state' data-vv='"+x[0]+"'>"+x[1]+"</button>";});
   h+="</div><div class='voc-filters' role='group' aria-label='Orden'>";
   [['diff','Dificultad'],['alpha','A–Z'],['last','Reciente']].forEach(function(x){h+="<button type='button' class='voc-chip"+(vf.sort===x[0]?' active':"")+"' aria-pressed='"+(vf.sort===x[0])+"' data-vf='sort' data-vv='"+x[0]+"'>"+x[1]+"</button>";});
   h+="</div><div id='voc-list'></div></div>";
@@ -979,6 +1011,7 @@ function renderVocabList(){
   var base=vf.level==='all'?V:V.filter(function(w){return w.N===vf.level;});
   base=dedup(base);
   if(vf.state==='hard')base=base.filter(function(w){return esDificil(gp(w));});
+  else if(vf.state==='saved')base=base.filter(function(w){return guardada(wk(w));});
   else if(vf.state!=='all')base=base.filter(function(w){return gp(w).state===vf.state;});
   if(vf.sort==='diff')base.sort(function(a,b){return gp(a).pct-gp(b).pct;});
   else if(vf.sort==='alpha')base.sort(function(a,b){return a.E.localeCompare(b.E);});
@@ -1000,7 +1033,7 @@ function renderVocabList(){
   if(!base.length)h+="<div class='empty'>Sin resultados. Se busca en español, en caracteres simplificados (学, no 學) y en pinyin con o sin tildes (ni hao, nǐ hǎo; sin números).</div>";
   base.forEach(function(w){
     var p=gp(w);
-    h+="<button type='button' class='voc-item' data-ficha='"+esc(wk(w))+"' aria-label='"+esc(w.C+' '+w.P+', '+w.E)+". Abrir ficha'><div class='voc-char' lang='zh-CN'>"+esc(w.C)+"</div><div class='voc-info'><div class='voc-esp'>"+esc(w.E)+"</div><div class='voc-pin' lang='zh-Latn-pinyin'>"+esc(w.P)+"</div></div><div class='voc-right'>"+sbadge(p.state)+(p.seen>0?"<div class='voc-pct' style='color:"+pcol(p.pct)+"'>"+p.pct+"%</div><div class='voc-seen'>"+pl(p.seen,'repaso','repasos')+"</div>":"<div class='voc-seen'>Sin repasar</div>")+"</div></button>";
+    h+="<button type='button' class='voc-item' data-ficha='"+esc(wk(w))+"' aria-label='"+esc(w.C+' '+w.P+', '+w.E)+(guardada(wk(w))?'. Guardada':'')+". Abrir ficha'><div class='voc-char' lang='zh-CN'>"+esc(w.C)+"</div><div class='voc-info'><div class='voc-esp'>"+esc(w.E)+"</div><div class='voc-pin' lang='zh-Latn-pinyin'>"+esc(w.P)+"</div></div><div class='voc-right'>"+(guardada(wk(w))?"<span class='voc-star'>"+ico('star')+"</span>":"")+sbadge(p.state)+(p.seen>0?"<div class='voc-pct' style='color:"+pcol(p.pct)+"'>"+p.pct+"%</div><div class='voc-seen'>"+pl(p.seen,'repaso','repasos')+"</div>":"<div class='voc-seen'>Sin repasar</div>")+"</div></button>";
   });
   document.getElementById('voc-list').innerHTML=h;
 }
@@ -1084,7 +1117,7 @@ function importData(f){
     var ok=isObj(d)&&d.formato==='hsk-respaldo-1'&&isObj(d.claves)&&typeof d.claves['hsk-prog-v2']==='string'&&
       Object.keys(d.claves).every(function(k){
         if(k.indexOf('hsk-')!==0||typeof d.claves[k]!=='string')return false;
-        if([KP,KS,KCF,KJ,'hsk-prog-v1'].indexOf(k)<0)return true;
+        if([KP,KS,KCF,KJ,KG,'hsk-prog-v1'].indexOf(k)<0)return true;
         try{return isObj(JSON.parse(d.claves[k]));}catch(e){return false;}
       });
     if(!ok){alert('Ese fichero no es una copia de progreso de HSK Trainer (debe ser el .json de «Exportar copia del progreso»). No se ha cambiado nada.');return;}
@@ -1113,7 +1146,7 @@ function importData(f){
 function showModal(){
   document.getElementById('modal').innerHTML="<div class='modal-overlay' id='moverlay'><div class='modal'><div class='modal-title'>Borrar progreso</div><div class='modal-sub'>Esta acción eliminará todo tu progreso y no se puede deshacer. Si quieres guardarlo, exporta antes una copia.</div><div class='modal-btns'><button class='btn-cancel' id='mexport'>Exportar copia primero</button><button class='btn-danger' id='mconfirm'>Borrar progreso</button><button class='btn-cancel' id='mcancel'>Cancelar</button></div></div></div>";
   document.getElementById('moverlay').addEventListener('click',function(e){if(e.target===this)hideModal();});
-  document.getElementById('mconfirm').addEventListener('click',function(){prog={};recent=[];hist=[];resumen=null;session=null;saveProg();delete cfg.newDay;saveCfg();jd=juegosVacio();try{localStorage.removeItem(KS);localStorage.removeItem(KH);localStorage.removeItem(KJ);}catch(e){}hideModal();render();enfocar('#btn-reset');});
+  document.getElementById('mconfirm').addEventListener('click',function(){prog={};recent=[];hist=[];resumen=null;session=null;saveProg();delete cfg.newDay;saveCfg();jd=juegosVacio();guard={};try{localStorage.removeItem(KS);localStorage.removeItem(KH);localStorage.removeItem(KJ);localStorage.removeItem(KG);}catch(e){}hideModal();render();enfocar('#btn-reset');});
   document.getElementById('mcancel').addEventListener('click',function(){hideModal();enfocar('#btn-reset');});
   enfocar('#mcancel');
   document.getElementById('mexport').addEventListener('click',exportData);
@@ -1424,7 +1457,8 @@ function onNC(e){
 function onMC(e){
   var t=e.target;
   if(clicJuegos(t))return;
-  var au=t.closest('.btn-audio');if(au){decir(au.dataset.say);return;}
+  var au=t.closest('.btn-audio,.btn-lento');if(au){decir(au.dataset.say,au.dataset.lento==='1');return;}
+  var st=t.closest('[data-guardar]');if(st){pintarEstrella(st,cambiarGuardada(st.dataset.guardar));if(curTab==='vocab')renderVocabList();return;}
   if(t.closest('#btn-practicar-dif')){resumen=null;filter.sessionMode=cfg.smode='hard';saveCfg();startSession('hard');curTab='study';flipped=false;render();trasCambio();return;}
   if(t.id==='btn-reveal'||t.closest('#btn-reveal')){revelar();return;}
   if(t.closest('#btn-pres')){presentada();return;}
@@ -1473,16 +1507,18 @@ function abrirFicha(k,origen){
   var p=gp(w),voz=hayVoz();
   var datos=p.conocida?'Marcada como «ya la conozco».':p.seen>0?pl(p.seen,'repaso','repasos')+' · '+p.pct+' % de aciertos · '+pl(p.fail,'fallo','fallos')+'<br>Próximo repaso: '+(p.nextReview<=Date.now()?'ya toca':new Date(p.nextReview).toLocaleString('es-ES',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})):'Todavía sin repasar.';
   var h="<div class='modal-overlay' id='foverlay'><div class='modal modal-ficha' role='dialog' aria-modal='true' aria-labelledby='fi-t'>"
-    +"<div style='display:flex;gap:6px;margin-bottom:10px'>"+lbadge(w.N)+sbadge(p.state)+"</div>"
-    +"<div class='ficha-top'><h2 class='ficha-char' id='fi-t' lang='zh-CN'>"+esc(w.C)+"</h2>"+(voz?"<button type='button' class='btn-audio' data-say='"+esc(w.C)+"' aria-label='Escuchar "+esc(w.C)+"'>"+ico('speaker')+"</button>":"")+"</div>"
+    +"<div class='ficha-badges'>"+lbadge(w.N)+sbadge(p.state)+estrellaHTML(k,1)+"</div>"
+    +"<div class='ficha-top'><h2 class='ficha-char' id='fi-t' lang='zh-CN'>"+esc(w.C)+"</h2>"+(voz?audioPar(w.C,'Escuchar '+w.C):"")+"</div>"
     +"<div class='ficha-pin' lang='zh-Latn-pinyin'>"+esc(w.P)+"</div><div class='ficha-esp'>"+esc(w.E)+"</div>"
-    +(w.S?"<div class='ficha-ej'><div class='card-sentence-zh' lang='zh-CN'>"+esc(w.S)+"</div>"+(w.SY?"<div class='card-sentence-py' lang='zh-Latn-pinyin'>"+esc(w.SY)+"</div>":"")+"<div class='card-sentence-es'>"+esc(w.SP)+"</div>"+(voz?"<button type='button' class='btn-audio sm' data-say='"+esc(w.S)+"' aria-label='Escuchar la frase'>"+ico('speaker')+"</button>":"")+"</div>":"")
+    +(w.S?"<div class='ficha-ej'><div class='card-sentence-zh' lang='zh-CN'>"+esc(w.S)+"</div>"+(w.SY?"<div class='card-sentence-py' lang='zh-Latn-pinyin'>"+esc(w.SY)+"</div>":"")+"<div class='card-sentence-es'>"+esc(w.SP)+"</div>"+(voz?audioPar(w.S,'Escuchar la frase',1):"")+"</div>":"")
     +"<div class='ficha-datos'>"+datos+"</div><div class='modal-btns'>"
     +(p.conocida?"<button type='button' class='btn-secondary' id='fi-quitar'>Quitar «ya la conozco»</button>":p.seen===0?"<button type='button' class='btn-secondary' id='fi-conozco'>Ya la conozco</button>":"")
     +"<button type='button' class='btn-cancel' id='fi-cerrar'>Cerrar</button></div></div></div>";
   document.getElementById('modal').innerHTML=h;fondo(true);
   var m=document.getElementById('modal');
-  var cerrar=function(){document.removeEventListener('keydown',tec);hideModal();fondo(false);var o=document.querySelector("[data-ficha='"+k.replace(/'/g,"\\'")+"']")||origen;if(o)try{o.focus();}catch(x){}};
+  var cerrar=function(){document.removeEventListener('keydown',tec);hideModal();fondo(false);var o=document.querySelector("[data-ficha='"+k.replace(/'/g,"\\'")+"']")||origen;
+    // Si la palabra ya no está en la lista (se quitó la estrella con el filtro «Guardadas»), el foco va a la lista
+    if(!o||!o.isConnected)o=document.querySelector('#voc-list .voc-item')||document.getElementById('voc-q');if(o)try{o.focus();}catch(x){}};
   var tec=function(e){
     if(e.key==='Escape'){cerrar();return;}
     if(e.key==='Tab'){var f=m.querySelectorAll('button'),a=f[0],z=f[f.length-1];
@@ -1491,7 +1527,8 @@ function abrirFicha(k,origen){
   };
   document.addEventListener('keydown',tec);
   document.getElementById('foverlay').addEventListener('click',function(e){
-    var t=e.target,au=t.closest('.btn-audio');if(au){decir(au.dataset.say);return;}
+    var t=e.target,au=t.closest('.btn-audio,.btn-lento');if(au){decir(au.dataset.say,au.dataset.lento==='1');return;}
+    var st=t.closest('[data-guardar]');if(st){pintarEstrella(st,cambiarGuardada(k));renderVocabList();return;}
     if(t.id==='foverlay'||t.closest('#fi-cerrar')){cerrar();return;}
     if(t.closest('#fi-conozco')){yaLaConozco(k);cerrar();renderVocabList();renderStats();anunciar('Marcada como ya la conozco.');return;}
     if(t.closest('#fi-quitar')){quitarConocida(k);cerrar();renderVocabList();renderStats();anunciar('Vuelve a ser nueva.');return;}
@@ -1537,7 +1574,9 @@ function aviso(t){
   document.body.appendChild(a);setTimeout(function(){if(a.parentNode)a.remove();},6000);
 }
 
-function mlabel(m){return{today:'Para hoy',new:'Nuevas',hard:'Difíciles',all:'Todo',quick10:'Rápida 10',quick20:'Rápida 20',quick30:'Rápida 30'}[m]||m;}
+function mlabel(m){return{today:'Para hoy',new:'Nuevas',hard:'Difíciles',all:'Todo',quick10:'Rápida 10',quick20:'Rápida 20',quick30:'Rápida 30',saved:'Guardadas'}[m]||m;}
+// La estrella cambia sin repintar la tarjeta (no se pierde lo escrito en el pinyin)
+function pintarEstrella(b,on){b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on));anunciar(on?'Palabra guardada.':'Palabra quitada de guardadas.');}
 
 init();
 // Sin conexión: solo cuando la app se sirve por http(s) (con doble clic no hay service worker)
