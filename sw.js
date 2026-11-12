@@ -1,7 +1,7 @@
 // Service worker mínimo (9-nov-2026): guarda la app para que se abra sin conexión.
 // Estrategia: responde con lo guardado y, a la vez, pide la versión nueva para la próxima vez.
 // Al publicar una versión nueva, cambiar VERSION para que se renueve la caché.
-var VERSION = 'hsk-2026-11-11-1';
+var VERSION = 'hsk-2026-11-12-1';
 var ARCHIVOS = ['./', './index.html', './manifest.webmanifest',
   './img/cabecera-paisaje.svg', './img/logo-montanas.svg', './img/nube.svg', './img/tarjeta-paisaje.svg',
   './img/icono-192.png', './img/icono-512.png', './img/apple-touch-icon.png'];
