@@ -283,6 +283,15 @@ body.en-sesion .stat-ico{display:none}
 .memo-card.mal .mc-frente{border:2px dashed var(--terra)}
 .mc-no{position:absolute;top:5px;right:5px;width:20px;height:20px;border-radius:50%;background:var(--terra);color:#fff;display:none;align-items:center;justify-content:center}
 .mc-no svg{width:12px;height:12px}
+/* Formas de jugar (12-nov-2026): en pinyin y sonido el carácter va sin pinyin hasta emparejarlo */
+.v-pinyin .memo-card:not(.hecha) .mc-pin,.v-audio .memo-card:not(.hecha) .mc-pin{visibility:hidden}
+.mc-pinv{font-size:22px;font-size:min(24px,18cqmin);font-weight:600;color:var(--green-strong);white-space:nowrap}
+.mc-son{color:var(--green-dark)}.mc-son svg{width:42px;height:42px}
+.v-audio .memo-card.hecha[data-lado=v]{cursor:pointer}
+.var-pin{font-size:15px;font-weight:700;font-style:italic}
+.memo-rec{margin:10px auto 22px;max-width:340px;font-size:15px;color:var(--ink-2)}
+.memo-rec.nuevo{color:var(--green-dark);font-weight:700}
+.hist-juego .hist-char{color:var(--green)}.hist-juego .hist-char svg{width:28px;height:28px}
 .memo-card.mal .mc-no{display:flex}
 .memo-card[aria-disabled=true]{cursor:default}
 .memo-msg{font-size:15px;line-height:20px;min-height:20px;margin:0 0 8px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -362,7 +371,7 @@ var TEMAS = [
   {id:'animales',nombre:'Animales',activo:false,parejas:[]} // más adelante: tipo:'img' con foto (plan aparte)
 ];
 (function(){'use strict';
-var KP='hsk-prog-v2',KS='hsk-ses-v2',KCF='hsk-cfg-v1',KH='hsk-hist-v1';
+var KP='hsk-prog-v2',KS='hsk-ses-v2',KCF='hsk-cfg-v1',KH='hsk-hist-v1',KJ='hsk-juegos-v1';
 var INTS={again:10,hard:1440,good:4320,easy:10080};
 var pausada=false; // sesión en pausa (12-nov-2026): se guarda y deja usar las pestañas; solo en memoria
 var prog={},cfg={},session=null,recent=[],curTab='study',flipped=false,hist=[],resumen=null,pinEscrito='';
@@ -712,7 +721,7 @@ function pcol(p){return p>=80?'#4A6B43':p>=50?'#9A6A12':'#B94D2B';}
 
 // ── UI BUILD ──
 function init(){
-  loadCfg();loadProg();loadHist();migrateKeys();migrateLegacy();loadSes();sembrarHist();buildUI();render();bienvenida();atajos();window.addEventListener('popstate',onPop);
+  loadCfg();loadProg();loadHist();loadJuegos();migrateKeys();migrateLegacy();loadSes();sembrarHist();buildUI();render();bienvenida();atajos();window.addEventListener('popstate',onPop);vigilarVoces();
 }
 
 function buildUI(){
@@ -781,7 +790,7 @@ function onPop(e){
   // Con una ventana abierta, Atrás solo la cierra
   if(document.querySelector('#modal .modal')){var b=document.querySelector('#fi-cerrar,#mcancel');if(b)b.click();try{history.pushState(vistaAct(),'');}catch(x){}return;}
   curTab=s.tab||'study';
-  if(curTab==='juegos'){var jv=s.jv||'lista';if(jv==='partida'&&!memo)jv='temas';if(jv!=='partida'&&memo)salirMemo();juegoVista=jv;}
+  if(curTab==='juegos'){var jv=s.jv||'lista';if(jv==='partida'&&!memo)jv=temaSel?'variante':'temas';if(jv==='variante'&&!temaSel)jv='temas';if(jv!=='partida'&&memo)salirMemo();juegoVista=jv;}
   navPop=true;try{render();}finally{navPop=false;}
   if(curTab==='juegos')enfocar('#jg-titulo');
 }
@@ -998,8 +1007,9 @@ function renderVocabList(){
 
 function renderHistory(){
   var el=document.getElementById('panel-history');
-  var lista=hist.length?hist.slice().reverse():recent;
-  if(!lista.length){el.innerHTML="<div class='empty-state'><div class='empty-icon'>"+ico('clock')+"</div><div class='empty-title'>Sin historial todavía</div><div class='empty-sub'>Aquí verás tus respuestas de los últimos 60 días.</div></div>";return;}
+  var resp=hist.length?hist:recent.slice().reverse();
+  var lista=resp.concat(jd.partidas.map(function(x){return{juego:x,ts:x.ts};})).sort(function(a,b){return b.ts-a.ts;});
+  if(!lista.length){el.innerHTML="<div class='empty-state'><div class='empty-icon'>"+ico('clock')+"</div><div class='empty-title'>Sin historial todavía</div><div class='empty-sub'>Aquí verás tus respuestas de los últimos 60 días y las partidas de los juegos.</div></div>";return;}
   var h="<div class='panel'><h2 class='panel-title'>Historial</h2>";
   var rmap={again:'Otra vez',hard:'Difícil',good:'Bien',easy:'Fácil'};
   var rcls={again:'hr-fail',hard:'hr-hard',good:'hr-ok',easy:'hr-ok'};
@@ -1008,10 +1018,13 @@ function renderHistory(){
   var idx={};V.forEach(function(x){idx[wk(x)]=x;});
   var abierta=false;
   lista.filter(function(r,i){return i<200||dayStr(new Date(r.ts))===hoyS;}).forEach(function(r){
-    var w=idx[r.k];if(!w)return;
+    var w=r.juego?null:idx[r.k];if(!w&&!r.juego)return;
     var dd=new Date(r.ts),ds=dayStr(dd);
-    if(ds!==dia){dia=ds;var nd=lista.filter(function(x){return dayStr(new Date(x.ts))===ds;}).length;
-      h+=(abierta?"</ul>":"")+"<h3 class='hist-day'>"+(ds===hoyS?'Hoy':ds===aySt?'Ayer':dd.toLocaleDateString('es-ES',{day:'numeric',month:'long'}))+" · "+pl(nd,'respuesta','respuestas')+"</h3><ul style='list-style:none'>";abierta=true;}
+    if(ds!==dia){dia=ds;var deldia=lista.filter(function(x){return dayStr(new Date(x.ts))===ds;}),np=deldia.filter(function(x){return x.juego;}).length,nd=deldia.length-np;
+      h+=(abierta?"</ul>":"")+"<h3 class='hist-day'>"+(ds===hoyS?'Hoy':ds===aySt?'Ayer':dd.toLocaleDateString('es-ES',{day:'numeric',month:'long'}))+" · "+[nd?pl(nd,'respuesta','respuestas'):'',np?pl(np,'partida','partidas'):''].filter(Boolean).join(' · ')+"</h3><ul style='list-style:none'>";abierta=true;}
+    if(r.juego){var g=r.juego,tg=TEMAS.filter(function(x){return x.id===g.tema;})[0];
+      h+="<li class='hist-item hist-juego'><div class='hist-char' aria-hidden='true'>"+ico('cartas')+"</div><div class='hist-info'><div class='hist-esp'>Memory · "+esc(tg?tg.nombre:g.tema)+"</div><div class='hist-pin'>"+esc(VARS[g.variante]?VARS[g.variante].nombre:'')+"</div></div><div class='hist-right'><div class='hist-result hr-ok'>"+intentos(g.movs)+"</div><div class='hist-meta'>"+durTxt(g.segs)+"</div></div></li>";
+      return;}
     var p=gp(w);
     h+="<li class='hist-item'><div class='hist-char' lang='zh-CN'>"+esc(w.C)+"</div><div class='hist-info'><div class='hist-esp'>"+esc(w.E)+"</div><div class='hist-pin' lang='zh-Latn-pinyin'>"+esc(w.P)+"</div></div><div class='hist-right'><div class='hist-result "+(rcls[r.rating]||'hr-ok')+"'>"+(rmap[r.rating]||esc(r.rating))+"</div>"+(p.seen>0?"<div class='hist-meta'>"+p.pct+"% · "+pl(p.seen,'repaso','repasos')+"</div>":"")+"</div></li>";
   });
@@ -1071,7 +1084,7 @@ function importData(f){
     var ok=isObj(d)&&d.formato==='hsk-respaldo-1'&&isObj(d.claves)&&typeof d.claves['hsk-prog-v2']==='string'&&
       Object.keys(d.claves).every(function(k){
         if(k.indexOf('hsk-')!==0||typeof d.claves[k]!=='string')return false;
-        if([KP,KS,KCF,'hsk-prog-v1'].indexOf(k)<0)return true;
+        if([KP,KS,KCF,KJ,'hsk-prog-v1'].indexOf(k)<0)return true;
         try{return isObj(JSON.parse(d.claves[k]));}catch(e){return false;}
       });
     if(!ok){alert('Ese fichero no es una copia de progreso de HSK Trainer (debe ser el .json de «Exportar copia del progreso»). No se ha cambiado nada.');return;}
@@ -1100,7 +1113,7 @@ function importData(f){
 function showModal(){
   document.getElementById('modal').innerHTML="<div class='modal-overlay' id='moverlay'><div class='modal'><div class='modal-title'>Borrar progreso</div><div class='modal-sub'>Esta acción eliminará todo tu progreso y no se puede deshacer. Si quieres guardarlo, exporta antes una copia.</div><div class='modal-btns'><button class='btn-cancel' id='mexport'>Exportar copia primero</button><button class='btn-danger' id='mconfirm'>Borrar progreso</button><button class='btn-cancel' id='mcancel'>Cancelar</button></div></div></div>";
   document.getElementById('moverlay').addEventListener('click',function(e){if(e.target===this)hideModal();});
-  document.getElementById('mconfirm').addEventListener('click',function(){prog={};recent=[];hist=[];resumen=null;session=null;saveProg();delete cfg.newDay;saveCfg();try{localStorage.removeItem(KS);localStorage.removeItem(KH);}catch(e){}hideModal();render();enfocar('#btn-reset');});
+  document.getElementById('mconfirm').addEventListener('click',function(){prog={};recent=[];hist=[];resumen=null;session=null;saveProg();delete cfg.newDay;saveCfg();jd=juegosVacio();try{localStorage.removeItem(KS);localStorage.removeItem(KH);localStorage.removeItem(KJ);}catch(e){}hideModal();render();enfocar('#btn-reset');});
   document.getElementById('mcancel').addEventListener('click',function(){hideModal();enfocar('#btn-reset');});
   enfocar('#mcancel');
   document.getElementById('mexport').addEventListener('click',exportData);
@@ -1160,7 +1173,46 @@ function onFC(e){
 // ── Juegos (PLAN_JUEGOS.md, fase 1, 12-nov-2026; mejoras de la revisión con personas del mismo día) ──
 // El Memory no lee ni escribe el progreso, la sesión, el historial ni los ajustes: la partida vive
 // solo en memoria y se pierde al salir de ella.
-var juegoVista='lista',memo=null,memoT=null,temaAvisado={};
+var juegoVista='lista',memo=null,memoT=null,temaAvisado={},temaSel=null;
+// Récords, última forma de jugar por temática y partidas terminadas (ESTUDIO_JUEGOS_IDEAS.md, 12-nov-2026).
+// «Borrar progreso» también lo borra. Las partidas no van en hsk-hist-v1, que solo guarda respuestas.
+var jd;
+function juegosVacio(){return{recs:{},ultima:{},partidas:[]};}
+function loadJuegos(){
+  var d=null;try{d=JSON.parse(localStorage.getItem(KJ)||'null');}catch(e){d=null;}
+  jd=juegosVacio();if(!isObj(d))return;
+  if(isObj(d.recs))Object.keys(d.recs).forEach(function(k){var r=d.recs[k];if(isObj(r)&&r.movs>0&&r.segs>0)jd.recs[k]={movs:+r.movs,segs:+r.segs,fecha:String(r.fecha||'')};});
+  if(isObj(d.ultima))Object.keys(d.ultima).forEach(function(k){if(VARS[d.ultima[k]])jd.ultima[k]=d.ultima[k];});
+  if(Array.isArray(d.partidas))jd.partidas=d.partidas.filter(function(x){return isObj(x)&&x.movs>0&&x.ts>0;}).slice(-200);
+}
+function saveJuegos(){try{localStorage.setItem(KJ,JSON.stringify(jd));}catch(e){}} // si no se puede guardar, el juego sigue
+// Formas de jugar
+var VARS={
+  color:{nombre:'Carácter y color',ini:'Toca dos cartas: un carácter y su color.'},
+  pinyin:{nombre:'Carácter y pinyin',ini:'Toca dos cartas: un carácter y su pinyin.'},
+  audio:{nombre:'Sonido y carácter',ini:'Toca dos cartas: un sonido y su carácter.'}
+};
+var VAR_ORDEN=['color','pinyin','audio'];
+// Hay voz china (las voces pueden llegar tarde: se vuelve a mirar con «voiceschanged»)
+function vozZh(){if(!hayVoz())return false;try{return speechSynthesis.getVoices().some(function(x){return/^zh[-_](CN|Hans|TW)/i.test(x.lang||'');});}catch(e){return false;}}
+var vozAntes=null;
+function vigilarVoces(){
+  if(!hayVoz())return;vozAntes=vozZh();
+  var f=function(){var v=vozZh();if(v!==vozAntes){vozAntes=v;if(curTab==='juegos'&&juegoVista==='variante')renderJuegos();}};
+  try{speechSynthesis.addEventListener('voiceschanged',f);}catch(e){try{speechSynthesis.onvoiceschanged=f;}catch(x){}}
+}
+function sinTonos(p){return String(p).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,'');}
+function repetidos(a){var o={},r=false;a.forEach(function(x){if(o[x])r=true;o[x]=1;});return r;}
+// '' si la forma de jugar está disponible para la temática; si no, el motivo
+function varMotivo(t,v){
+  var ps=temaPalabras(t);if(!ps)return'No disponible';
+  if(v==='color')return ps.every(function(x){return x.p.tipo==='color';})?'':'Esta temática no tiene colores';
+  if(v==='pinyin')return repetidos(ps.map(function(x){return x.w.P.toLowerCase();}))?'Hay palabras con el mismo pinyin':'';
+  if(v==='audio'){if(!vozZh())return'Tu navegador no tiene voz en chino';return repetidos(ps.map(function(x){return sinTonos(x.w.P);}))?'Hay palabras que suenan casi igual':'';}
+  return'No disponible';
+}
+function durTxt(s){return s<60?s+' s':Math.floor(s/60)+' min '+(s%60)+' s';}
+function recTxt(r){return intentos(r.movs)+' ('+durTxt(r.segs)+')';}
 var MEMO_FALLO_MS=1400,MEMO_FIN_MS=1500;
 // Parejas de un tema con su tarjeta de V; null si alguna palabra ya no existe en V
 function temaPalabras(t){
@@ -1182,6 +1234,24 @@ var ICO_NO="<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-wi
 function renderJuegos(){
   var el=document.getElementById('panel-juegos');
   if(juegoVista==='partida'&&memo){el.innerHTML=memoHTML();return;}
+  if(juegoVista==='variante'){
+    var tv=TEMAS.filter(function(x){return x.id===temaSel;})[0];
+    if(!temaActivo(tv)){juegoVista='temas';return renderJuegos();}
+    var hv="<div class='panel'><div class='jg-cab'><button type='button' class='btn-volver' id='jg-volver' aria-label='Volver a las temáticas'><span aria-hidden='true'>‹</span> Memory</button></div>"
+      +"<h2 class='panel-title' id='jg-titulo' tabindex='-1'>"+esc(tv.nombre)+"</h2><p class='juego-intro'>¿Cómo quieres emparejar?</p>";
+    VAR_ORDEN.forEach(function(v){
+      var mot=varMotivo(tv,v),r=jd.recs[tv.id+'|'+v];
+      var icoV=v==='color'?"<span class='tema-muestra' aria-hidden='true'>"+tv.parejas.map(function(p){return"<i style='background:"+esc(p.valor||'#ccc')+"'></i>";}).join('')+"</span>"
+        :v==='pinyin'?"<span class='juego-ico var-pin' aria-hidden='true'>pīn</span>":"<span class='juego-ico' aria-hidden='true'>"+ico('speaker')+"</span>";
+      hv+="<button type='button' class='tema-item' data-var='"+v+"'"+(mot?" disabled":"")+">"+icoV
+        +"<span class='juego-info'><span class='juego-nombre'>"+VARS[v].nombre+"</span><span class='juego-desc'>"
+        +(mot?esc(mot):r?'Récord: '+recTxt(r):'Sin récord todavía')+"</span></span>"
+        +(mot?"":"<span class='juego-flecha' aria-hidden='true'>›</span>")+"</button>";
+    });
+    if(!vozZh()&&hayVoz())hv+="<p class='juego-nota'>El sonido usa la voz china del aparato. Si no aparece, revisa las voces en los ajustes del sistema.</p>";
+    else if(vozZh())hv+="<p class='juego-nota'>Si no oyes nada en el iPhone, quita el modo silencio.</p>";
+    el.innerHTML=hv+"</div>";return;
+  }
   if(juegoVista==='temas'){
     var h="<div class='panel'><div class='jg-cab'><button type='button' class='btn-volver' id='jg-volver' aria-label='Volver a Juegos'><span aria-hidden='true'>‹</span> Juegos</button></div>"
       +"<h2 class='panel-title' id='jg-titulo' tabindex='-1'>Memory</h2><p class='juego-intro'>Elige una temática</p>";
@@ -1190,43 +1260,53 @@ function renderJuegos(){
       var muestra=ok&&t.parejas[0].tipo==='color'?"<span class='tema-muestra' aria-hidden='true'>"+t.parejas.map(function(p){return"<i style='background:"+esc(p.valor)+"'></i>";}).join('')+"</span>":"<span class='juego-ico' aria-hidden='true'>"+ico('cartas')+"</span>";
       h+="<button type='button' class='tema-item' data-tema='"+esc(t.id)+"'"+(ok?"":" disabled")+">"+muestra
         +"<span class='juego-info'><span class='juego-nombre'>"+esc(t.nombre)+"</span><span class='juego-desc'>"
-        +(ok?ps.length+" parejas · carácter y "+(t.parejas[0].tipo==='color'?'color':'dibujo'):'Próximamente')+"</span></span>"
+        +(ok?ps.length+" parejas":'Próximamente')+"</span></span>"
         +(ok?"<span class='juego-flecha' aria-hidden='true'>›</span>":"")+"</button>";
     });
     el.innerHTML=h+"</div>";return;
   }
   el.innerHTML="<div class='panel'><h2 class='panel-title' id='jg-titulo' tabindex='-1'>Juegos</h2>"
     +"<button type='button' class='juego-item' id='jg-memory'><span class='juego-ico' aria-hidden='true'>"+ico('cartas')+"</span>"
-    +"<span class='juego-info'><span class='juego-nombre'>Memory</span><span class='juego-desc'>Juego de parejas: une cada carácter chino con su color</span></span>"
+    +"<span class='juego-info'><span class='juego-nombre'>Memory</span><span class='juego-desc'>Juego de parejas: une cada carácter chino con su color, su pinyin o su sonido</span></span>"
     +"<span class='juego-flecha' aria-hidden='true'>›</span></button>"
     +"<p class='juego-nota'>Más juegos, próximamente.</p></div>";
 }
 
 // Texto de una carta en HTML, con el chino marcado con su idioma (para que el lector cambie de voz)
 function zhHTML(w){return"<span lang='zh-CN'>"+esc(w.C)+"</span>, <span lang='zh-Latn-pinyin'>"+esc(w.P)+"</span>";}
-function cartaDescHTML(c){return c.lado==='c'?zhHTML(c.w):esc(c.p.nombre);}
+function cartaDescHTML(c){
+  var v=memo?memo.variante:'color';
+  if(c.lado==='c')return v==='color'||c.estado==='hecha'?zhHTML(c.w):"<span lang='zh-CN'>"+esc(c.w.C)+"</span>";
+  return v==='color'?esc(c.p.nombre):v==='pinyin'?"<span lang='zh-Latn-pinyin'>"+esc(c.w.P)+"</span>":'sonido';
+}
+// Lo que se dice de la pareja: el color o el pinyin
+function parejaHTML(c){return memo.variante==='color'?esc(c.p.nombre):"<span lang='zh-Latn-pinyin'>"+esc(c.w.P)+"</span>";}
 function cartaSR(c,i){return'Carta '+(i+1)+(c.estado==='abajo'?', boca abajo':': '+cartaDescHTML(c)+(c.estado==='hecha'?', emparejada':''));}
 function intentos(n){return n+(n===1?' intento':' intentos');}
 function memoCont(){return"<b>"+memo.hechas+"/"+memo.total+"</b> parejas<br>"+intentos(memo.movs);}
 function memoSegs(){return Math.max(1,Math.round(((memo.t1||Date.now())-memo.t0)/1000));}
 function memoHTML(){
   if(memo.fin){
-    var s=memoSegs(),dur=s<60?s+' s':Math.floor(s/60)+' min '+(s%60)+' s';
+    var s=memoSegs(),dur=durTxt(s),ra=memo.recAnt;
+    var rec=memo.nuevoRec?(ra?'¡Nuevo récord! Antes: '+recTxt(ra)+'.':'Tu primer récord en esta forma de jugar.'):'Tu récord: '+recTxt(ra)+'.';
     var lista=memo.cartas.filter(function(c){return c.lado==='c';}).sort(function(a,b){return a.par-b.par;}).map(function(c){
       return"<li><span class='mr-color' style='background:"+esc(c.p.valor)+"' aria-hidden='true'></span><span class='mr-zh' lang='zh-CN'>"+esc(c.w.C)+"</span><span class='mr-pin' lang='zh-Latn-pinyin'>"+esc(c.w.P)+"</span><span class='mr-es'>"+esc(c.p.nombre)+"</span>"
         +(hayVoz()?"<button type='button' class='btn-audio sm' data-say='"+esc(c.w.C)+"' aria-label='Escuchar "+esc(c.w.C)+"'>"+ico('speaker')+"</button>":"")+"</li>";
     }).join('');
     return"<div class='empty-state memo-fin'><h2 class='empty-title' tabindex='-1'>¡Hecho!</h2>"
       +"<div class='empty-sub'>Has encontrado las "+memo.total+" parejas de "+esc(memo.nombre.toLowerCase())+" en "+intentos(memo.movs)+" ("+dur+").</div>"
+      +"<div class='memo-rec"+(memo.nuevoRec?' nuevo':'')+"'>"+VARS[memo.variante].nombre+" · "+rec+"</div>"
       +"<div class='empty-actions'><button type='button' class='btn-primary' id='memo-otra'>Otra vez</button><button type='button' class='btn-secondary' id='memo-temas'>Cambiar temática</button><button type='button' class='btn-secondary' id='memo-estudiar'>Volver a Estudiar</button></div>"
       +"<h3 class='memo-repaso-t'>Repasa las parejas</h3><ul class='memo-repaso'>"+lista+"</ul></div>";
   }
   var h="<div class='memo'><div class='memo-bar'><button type='button' class='btn-volver' id='jg-volver' aria-label='Salir de la partida y volver a las temáticas'><span aria-hidden='true'>‹</span> Salir</button>"
     +"<h2 class='memo-titulo' id='jg-titulo' tabindex='-1'>"+esc(memo.nombre)+"</h2><div class='memo-cont' id='memo-cont'>"+memoCont()+"</div></div>"
     +"<p class='memo-msg"+(memo.msgCls?' '+memo.msgCls:'')+"' id='memo-msg' aria-hidden='true'>"+memo.msg+"</p>"
-    +"<div class='memo-board' id='memo-board' role='group' aria-label='Tablero de "+memo.cartas.length+" cartas'>";
+    +"<div class='memo-board v-"+memo.variante+"' id='memo-board' role='group' aria-label='Tablero de "+memo.cartas.length+" cartas'>";
   memo.cartas.forEach(function(c,i){
     var frente=c.lado==='c'?"<span class='mc-zh' lang='zh-CN'>"+esc(c.w.C)+"</span><span class='mc-pin' lang='zh-Latn-pinyin'>"+esc(c.w.P)+"</span>"
+      :memo.variante==='pinyin'?"<span class='mc-pinv' lang='zh-Latn-pinyin'>"+esc(c.w.P)+"</span>"
+      :memo.variante==='audio'?"<span class='mc-son'>"+ico('speaker')+"</span><span class='mc-nom'>Sonido</span>"
       :"<span class='mc-color' style='background:"+esc(c.p.valor)+"'></span><span class='mc-nom'>"+esc(c.p.nombre)+"</span>";
     h+="<button type='button' class='memo-card' data-i='"+i+"' data-par='"+c.par+"' data-lado='"+c.lado+"'>"
       +"<span class='sr-only mc-sr'>"+cartaSR(c,i)+"</span>"
@@ -1247,48 +1327,61 @@ function memoMsg(vis,sr,cls){
   memo.msg=vis;memo.msgCls=cls||'';var m=document.getElementById('memo-msg');if(m){m.innerHTML=vis;m.className='memo-msg'+(cls?' '+cls:'');}
   var a=document.getElementById('anuncio');if(a){a.textContent='';setTimeout(function(){if(memo&&memo.msg===vis)a.innerHTML=sr;},60);}
 }
-var MEMO_INI='Toca dos cartas: un carácter y su color.';
 
-function empezarMemo(id){
+function empezarMemo(id,v){
   var t=TEMAS.filter(function(x){return x.id===id;})[0];if(!temaActivo(t))return;
+  if(!VARS[v]||varMotivo(t,v))return;
+  temaSel=id;jd.ultima[id]=v;saveJuegos();
   var cs=[];
   temaPalabras(t).forEach(function(x,i){cs.push({par:i,lado:'c',w:x.w,p:x.p,estado:'abajo'});cs.push({par:i,lado:'v',w:x.w,p:x.p,estado:'abajo'});});
   clearTimeout(memoT);
-  memo={tema:t.id,nombre:t.nombre,cartas:barajar(cs),abiertas:[],movs:0,hechas:0,total:cs.length/2,bloqueo:false,fin:false,msg:MEMO_INI,t0:Date.now(),t1:0};
+  memo={tema:t.id,nombre:t.nombre,variante:v,ini:VARS[v].ini,cartas:barajar(cs),abiertas:[],movs:0,hechas:0,total:cs.length/2,bloqueo:false,fin:false,msg:VARS[v].ini,t0:Date.now(),t1:0};
   juegoVista='partida';render();
   // El foco va al título, no a una carta: una tecla mantenida en «Otra vez» no destapa nada
   enfocar('#jg-titulo');
-  anunciar('Memory de '+t.nombre.toLowerCase()+': '+cs.length+' cartas boca abajo. '+MEMO_INI);
+  anunciar('Memory de '+t.nombre.toLowerCase()+', '+VARS[v].nombre.toLowerCase()+': '+cs.length+' cartas boca abajo. '+memo.ini);
 }
 function cerrarAbiertas(){
   clearTimeout(memoT);if(!memo)return;
   memo.abiertas.forEach(function(i){var c=memo.cartas[i];if(c.estado==='arriba')c.estado='abajo';c.mal=false;pintarCarta(i);});
   memo.abiertas=[];memo.bloqueo=false;
   // Tras un fallo, el mensaje vuelve a la instrucción (sin volver a anunciarlo)
-  if(memo.msgCls==='no'){memo.msg=MEMO_INI;memo.msgCls='';var m=document.getElementById('memo-msg');if(m){m.textContent=MEMO_INI;m.className='memo-msg';}}
+  if(memo.msgCls==='no'){memo.msg=memo.ini;memo.msgCls='';var m=document.getElementById('memo-msg');if(m){m.textContent=memo.ini;m.className='memo-msg';}}
 }
 function girarCarta(i){
   if(!memo||memo.fin)return;
-  var c=memo.cartas[i];if(!c||c.estado==='hecha')return;
+  var c=memo.cartas[i];if(!c)return;
+  if(c.estado==='hecha'){if(memo.variante==='audio'&&c.lado==='v')decir(c.w.C);return;} // la carta de sonido emparejada se puede volver a oír
   // Con dos cartas que no son pareja a la vista, tocar otra las tapa y abre la tocada (tocar una de las dos solo las tapa)
   if(memo.bloqueo){var eraAbierta=memo.abiertas.indexOf(i)>=0;cerrarAbiertas();if(eraAbierta)return;}
   if(c.estado!=='abajo')return; // la misma carta otra vez
   c.estado='arriba';memo.abiertas.push(i);pintarCarta(i);
-  if(c.lado==='c')decir(c.w.C);
+  // Color: suena el carácter. Sonido: suena la carta de sonido. Pinyin: suena al emparejar (si no, regalaría la pareja)
+  if((memo.variante==='color'&&c.lado==='c')||(memo.variante==='audio'&&c.lado==='v'))decir(c.w.C);
   if(memo.abiertas.length===1){memoMsg('Ahora busca su pareja.',cartaDescHTML(c)+'. Ahora busca su pareja.');return;}
   memo.movs++;
   var j=memo.abiertas[0],a=memo.cartas[j];
   if(a.par===c.par){
     a.estado=c.estado='hecha';memo.abiertas=[];memo.hechas++;pintarCarta(j);pintarCarta(i);pintarCont();
+    if(memo.variante==='pinyin')decir(c.w.C);
     if(memo.hechas===memo.total){
-      memo.fin=true;memo.t1=Date.now();memoMsg('¡Pareja! <span lang="zh-CN">'+esc(c.w.C)+'</span> = '+esc(c.p.nombre)+'. ¡Terminado!','Pareja: '+zhHTML(c.w)+', '+esc(c.p.nombre)+'. ¡Has terminado!','ok');
+      memo.fin=true;memo.t1=Date.now();finPartida();memoMsg('¡Pareja! <span lang="zh-CN">'+esc(c.w.C)+'</span> = '+parejaHTML(c)+'. ¡Terminado!','Pareja: '+zhHTML(c.w)+(memo.variante==='color'?', '+esc(c.p.nombre):'')+'. ¡Has terminado!','ok');
       memoT=setTimeout(function(){if(curTab==='juegos'&&memo&&memo.fin){render();enfocar('.empty-title');anunciar('¡Hecho! '+intentos(memo.movs)+'.');}},MEMO_FIN_MS);
-    }else memoMsg('¡Pareja! <span lang="zh-CN">'+esc(c.w.C)+'</span> = '+esc(c.p.nombre),'Pareja: '+zhHTML(c.w)+', '+esc(c.p.nombre)+'. Llevas '+memo.hechas+' de '+memo.total+'.','ok');
+    }else memoMsg('¡Pareja! <span lang="zh-CN">'+esc(c.w.C)+'</span> = '+parejaHTML(c),'Pareja: '+zhHTML(c.w)+(memo.variante==='color'?', '+esc(c.p.nombre):'')+'. Llevas '+memo.hechas+' de '+memo.total+'.','ok');
   }else{
     a.mal=c.mal=true;memo.bloqueo=true;pintarCarta(j);pintarCarta(i);pintarCont();
     memoMsg('No es pareja. Toca otra carta.','No es pareja: '+cartaDescHTML(a)+' y '+cartaDescHTML(c)+'.','no');
     memoT=setTimeout(cerrarAbiertas,MEMO_FALLO_MS);
   }
+}
+function finPartida(){
+  var k=memo.tema+'|'+memo.variante,segs=memoSegs(),r=jd.recs[k];
+  memo.recAnt=r||null;memo.nuevoRec=!r||memo.movs<r.movs||(memo.movs===r.movs&&segs<r.segs);
+  if(memo.nuevoRec)jd.recs[k]={movs:memo.movs,segs:segs,fecha:todayStr()};
+  else memo.recAnt=r;
+  jd.partidas.push({tema:memo.tema,variante:memo.variante,movs:memo.movs,segs:segs,ts:memo.t1});
+  if(jd.partidas.length>200)jd.partidas=jd.partidas.slice(-200);
+  saveJuegos();markDay();
 }
 // Flechas para moverse por el tablero (Inicio/Fin: primera y última carta)
 function teclasTablero(e){
@@ -1300,19 +1393,25 @@ function teclasTablero(e){
   if(d!==undefined){k=i+d;if(k<0||k>=n)return;}else if(e.key==='Home')k=0;else if(e.key==='End')k=n-1;else return;
   e.preventDefault();cs[k].focus();
 }
+function q1(sel){return document.querySelector(sel);}
 function salirMemo(){clearTimeout(memoT);memo=null;anunciar('');}
 // Clics del panel de juegos; devuelve true si el clic era suyo
 function clicJuegos(t){
   if(curTab!=='juegos')return false;
   var card=t.closest('.memo-card');if(card){girarCarta(+card.dataset.i);return true;}
   if(t.closest('#jg-memory')){juegoVista='temas';render();enfocar('#jg-titulo');return true;}
-  var tm=t.closest('[data-tema]');if(tm){if(!tm.disabled)empezarMemo(tm.dataset.tema);return true;}
-  if(t.closest('#memo-otra')){empezarMemo(memo.tema);return true;}
+  var tm=t.closest('[data-tema]');if(tm){if(!tm.disabled){temaSel=tm.dataset.tema;juegoVista='variante';render();var u=jd.ultima[temaSel];enfocar(u&&q1("[data-var='"+u+"']:not([disabled])")?"[data-var='"+u+"']":'#jg-titulo');}return true;}
+  var tv=t.closest('[data-var]');if(tv){if(!tv.disabled)empezarMemo(temaSel,tv.dataset.var);return true;}
+  if(t.closest('#memo-otra')){empezarMemo(memo.tema,memo.variante);return true;}
   if(t.closest('#memo-estudiar')){salirMemo();juegoVista='lista';curTab='study';render();enfocar('#btn-start');return true;}
-  if(t.closest('#memo-temas')||t.closest('#jg-volver')){
+  if(t.closest('#memo-temas')){var tt=memo&&memo.tema;salirMemo();juegoVista='temas';render();enfocar(tt?"[data-tema='"+tt+"']":'#jg-titulo');return true;}
+  if(t.closest('#jg-volver')){
+    // Atrás de cada pantalla: partida → formas de jugar → temáticas → lista de juegos
     var desde=juegoVista;
-    if(desde==='partida'){salirMemo();juegoVista='temas';}else juegoVista='lista';
-    render();enfocar(desde==='partida'?"[data-tema]:not([disabled])":'#jg-memory');return true;
+    if(desde==='partida'){var vv=memo&&memo.variante;salirMemo();juegoVista='variante';render();enfocar(vv?"[data-var='"+vv+"']":'#jg-titulo');}
+    else if(desde==='variante'){juegoVista='temas';render();enfocar(temaSel?"[data-tema='"+temaSel+"']":'#jg-titulo');}
+    else{juegoVista='lista';render();enfocar('#jg-memory');}
+    return true;
   }
   return false;
 }
