@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Prueba de voz</title>
+<!-- Página temporal (12-nov-2026) para elegir la velocidad de «Despacio» en el iPhone (D2). Se borra después. -->
+<style>
+  :root{--bg:#F7F3EC;--ink:#202621;--ink-2:#5F625B;--green:#587D50;--green-dark:#183B2C;--green-soft:#E2E9D9;--surface:#FFFDF8}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,system-ui,sans-serif}
+  main{max-width:520px;margin:0 auto;padding:20px 16px 40px}
+  h1{font-size:22px;margin:0 0 6px}
+  p{margin:0 0 14px;color:var(--ink-2)}
+  section{background:var(--surface);border-radius:20px;padding:18px 16px;margin-bottom:16px}
+  .zh{font-size:40px;color:var(--green-dark)}.zh.frase{font-size:24px}
+  .py{color:var(--green);margin-bottom:12px}
+  .btns{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  button{min-height:52px;border:none;border-radius:14px;background:var(--green-soft);color:var(--green-dark);font:inherit;font-weight:600;cursor:pointer}
+  button.actual{background:var(--green);color:#fff}
+  small{display:block;font-weight:400;font-size:13px}
+  #voz{font-size:13px}
+</style>
+</head>
+<body>
+<main>
+  <h1>¿A qué velocidad, «Despacio»?</h1>
+  <p>Pulsa cada botón varias veces con la palabra y con la frase. Dime qué velocidad te sirve para «Despacio». Hoy la app usa 0,85 para el altavoz y 0,6 para «Despacio».</p>
+  <section>
+    <div class="zh" lang="zh-CN">银行</div>
+    <div class="py" lang="zh-Latn-pinyin">yínháng · banco</div>
+    <div class="btns" data-txt="银行"></div>
+  </section>
+  <section>
+    <div class="zh frase" lang="zh-CN">我八月去中国。</div>
+    <div class="py" lang="zh-Latn-pinyin">Wǒ bāyuè qù Zhōngguó. · En agosto voy a China.</div>
+    <div class="btns" data-txt="我八月去中国。"></div>
+  </section>
+  <p id="voz"></p>
+</main>
+<script>
+'use strict';
+var RATES=[[0.85,'normal (altavoz)'],[0.6,'«Despacio» hoy'],[0.45,''],[0.35,'']];
+document.querySelectorAll('.btns').forEach(function(b){
+  b.innerHTML=RATES.map(function(r){return"<button type='button' class='"+(r[0]===0.85?'actual':'')+"' data-r='"+r[0]+"'>"+String(r[0]).replace('.',',')+(r[1]?'<small>'+r[1]+'</small>':'')+"</button>";}).join('');
+});
+// La misma elección de voz que la app: zh-CN primero; si no, zh-TW; nunca zh-HK
+function voz(){var vs=speechSynthesis.getVoices();return vs.filter(function(x){return/^zh[-_](CN|Hans)/i.test(x.lang);})[0]||vs.filter(function(x){return/^zh[-_]TW/i.test(x.lang);})[0]||null;}
+function info(){var v=voz();document.getElementById('voz').textContent=v?'Voz: '+v.name+' ('+v.lang+')':'No encuentro voz china en este navegador.';}
+if(window.speechSynthesis){info();speechSynthesis.onvoiceschanged=info;}else document.getElementById('voz').textContent='Este navegador no tiene voz.';
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-r]');if(!b||!window.speechSynthesis)return;
+  speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(b.parentNode.dataset.txt);u.lang='zh-CN';u.rate=+b.dataset.r;var v=voz();if(v)u.voice=v;speechSynthesis.speak(u);
+});
+</script>
+</body>
+</html>
